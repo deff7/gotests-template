@@ -1,0 +1,69 @@
+{{define "assertion" -}}
+tc.assertion(t, {{if .OnlyReturnsError}}{{template "call" .}}{{else}}err{{end}}
+{{- if or (not .Subtests) .PrintInputs -}}
+    , fmt.Sprintf("{{template "message" .}}", {{template "inputs" .}})
+{{- end -}}
+)
+{{- end}}
+
+
+{{define "equal"}}assert.Equal{{if or (not .Subtests) .PrintInputs}}f{{end}}{{end}}
+
+
+{{define "msg"}}{{if or (not .Subtests) .PrintInputs}} , "{{template "message" .}}", {{template "inputs" .}}{{end}}{{end}}
+
+
+{{define "function"}}
+{{- $f := .}}
+
+func {{.TestName}}(t *testing.T) {
+	for {{if (or .Subtests (not .IsNaked))}} _, tc := {{end}} range []struct {
+		name string
+		{{- range .TestParameters}}
+                {{- if eq "name" (Param .)}}// FIXME: name collision! {{- end}}
+				{{Param .}} {{.Type}}
+		{{- end}}
+		{{- with .Receiver}}
+            {{Receiver .}} {{.Type}}
+		{{- end}}
+		{{- range .TestResults}}
+			{{Want .}} {{.Type}}
+		{{- end}}
+		{{- if .ReturnsError}}
+			assertion assert.ErrorAssertionFunc
+		{{- end}}
+	} {
+		// TODO: Add test cases.
+	} {
+		{{- if .Subtests}}
+		{{- if .Parallel}}tc := tc{{end}}
+		t.Run(tc.name, func(t *testing.T) {
+			{{- if .Parallel}}t.Parallel(){{end}}
+		{{- end}}
+			{{- with .Receiver}}
+				{{- if .IsStruct}}
+					{{Receiver .}} := tc.{{Receiver .}}
+				{{- end}}
+			{{- end}}
+			{{- range .Parameters}}
+				{{- if .IsWriter}}
+					{{Param .}} := &bytes.Buffer{}
+				{{- end}}
+			{{- end}}
+            {{template "results" $f}} {{template "call" $f}}
+
+			{{- if .ReturnsError}}
+                {{template "assertion" $f}}
+			{{- end}}
+			{{- range .TestResults}}
+				{{- if .IsWriter}}
+                    {{template "equal" $f}}(t, tc.{{Want .}}, {{Param .}}.String(){{template "msg" $f}})
+				{{- else}}
+                {{template "equal" $f}}(t, tc.{{Want .}}, {{Got .}}{{template "msg" $f}})
+				{{- end}}
+			{{- end}}
+		{{- if .Subtests }} }) {{- end -}}
+	}
+}
+
+{{end}}
